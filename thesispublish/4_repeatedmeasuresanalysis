@@ -1,0 +1,296 @@
+#Author: Melissa Stephen
+
+#This script will run the main repeated measures evaluation, using the std adjusted files as phenotypes (generated from the 3std_adj_weight_JWASsolver.sh)
+
+#The following are the files that are required in the current dir
+
+#varadj_weight_deviation_1 varadj_weight_deviation_2 varadj_weight_deviation_3 varadj_weight_deviation_5
+#pedigree_source
+#list of validation animals (in this case, all 2015 born animals:  partial_rmids.srt) This file includes every animals born in the validation year with a live weight phenotype. 
+
+#Produce weight deviation files for each category, where the validation animals are excluded
+
+join -v 1 varadj_weight_deviation_1 partial_rmids.srt > varadj_weight_deviation_1_partial.tmp 
+join -v 1 varadj_weight_deviation_2 partial_rmids.srt > varadj_weight_deviation_2_partial.tmp
+join -v 1 varadj_weight_deviation_3 partial_rmids.srt > varadj_weight_deviation_3_partial.tmp
+join -v 1 varadj_weight_deviation_5 partial_rmids.srt > varadj_weight_deviation_5_partial.tmp
+
+#Produce a list of ids of the animals excluded from each category 
+
+join varadj_weight_deviation_1 partial_rmids.srt | awk '{print $1}' | sort  > varadj_weight_deviation_1_partial_rmids.tmp
+join varadj_weight_deviation_2 partial_rmids.srt | awk '{print $1}' | sort  > varadj_weight_deviation_2_partial_rmids.tmp
+join varadj_weight_deviation_3 partial_rmids.srt | awk '{print $1}' | sort  > varadj_weight_deviation_3_partial_rmids.tmp
+join varadj_weight_deviation_5 partial_rmids.srt | awk '{print $1}' | sort  > varadj_weight_deviation_5_partial_rmids.tmp
+
+#produce a list of animals excluded from each validation run
+
+cat varadj_weight_deviation_1_partial_rmids.tmp varadj_weight_deviation_2_partial_rmids.tmp varadj_weight_deviation_3_partial_rmids.tmp varadj_weight_deviation_5_partial_rmids.tmp | awk '{print $1}' | sort -u > rmids_partial1
+awk '{print $1}' varadj_weight_deviation_5_partial_rmids.tmp | sort -u > rmids_partial2
+
+#Create a list of ids were the animals have an adolescent phenotype, and a FYW phenotype - but FLW phenotype has been removed from the evaluation (FLW phenotype has been removed for all 2015 born animals) 
+
+cat varadj_weight_deviation_1_partial_rmids.tmp varadj_weight_deviation_2_partial_rmids.tmp varadj_weight_deviation_3_partial_rmids.tmp | awk '{print $1}' | sort -u > 2015with123phen_ids.tmp
+join 2015with123phen_ids.tmp varadj_weight_deviation_5_partial_rmids.tmp | sort > partial2_validationids_with123phen.tmp
+
+cat varadj_weight_deviation_1 varadj_weight_deviation_2 varadj_weight_deviation_3 varadj_weight_deviation_5 | awk '$1!="id"{print $1,$1,$2,$3}' > varadj_weight_deviation_1235
+cat varadj_weight_deviation_1_partial.tmp varadj_weight_deviation_2_partial.tmp varadj_weight_deviation_3_partial.tmp varadj_weight_deviation_5_partial.tmp | awk '$1!="id"{print $1,$1,$2,$3}' > varadj_weight_deviation_1235_partial1
+cat varadj_weight_deviation_1 varadj_weight_deviation_2 varadj_weight_deviation_3 varadj_weight_deviation_5_partial.tmp | awk '$1!="id"{print $1,$1,$2,$3}' > varadj_weight_deviation_1235_partial2
+
+#Produce header rows 
+
+echo "idg,idp,cg,weight" > phenotypes_1235
+echo "idg,idp,cg,weight" > phenotypes_1235_partial1
+echo "idg,idp,cg,weight" > phenotypes_1235_partial2
+
+
+#Produce phenotype files 
+
+sed s/" "/","/g varadj_weight_deviation_1235 >> phenotypes_1235
+sed s/" "/","/g varadj_weight_deviation_1235_partial1 >> phenotypes_1235_partial1
+sed s/" "/","/g varadj_weight_deviation_1235_partial2 >> phenotypes_1235_partial2
+
+#Produce pedigree files 
+
+awk -F, '{print $1}' phenotypes_1235 | sort -u > ids_1235.tmp
+
+#Run the nGenPedBuilder to build relevant pedigree 
+
+nGenPedBuilder.sh ids_1235.tmp pedigree_source 4
+mv newPed.4 pedigree_1235.tmp
+
+#Process the ped files to suit JWAS (replace . with 0 for missing, and change column sep to a comma. 
+
+#1235
+
+echo "id,sire,dam"                                                                       > pedigree_1235
+sed 's/\./0/g' pedigree_1235.tmp | sed s/" "/,/g                                        >> pedigree_1235
+rm pedigree_1235.tmp
+
+#Run the analysis in JWAS. Note: the MCMC needs to be run if the variance components need to be reestimated. 
+
+chmod a+x+u  ../*
+JWAS
+cd <current>
+julia
+
+using JWAS,JWAS.Datasets,DataFrames,CSV,DelimitedFiles
+
+#Estimating variance components
+
+#phenotypes = CSV.read("phenotypes_1235",delim = ',',header=true)
+#pedigree   = get_pedigree("pedigree_1235",separator=",",header=true);
+#phenotypes[1] = map(x -> string(x), phenotypes[1]);
+#model_equation="weight = idp + idg + cg"
+#G = 0.398
+#P = 0.22
+#R = 0.37
+#model1 = build_model(model_equation,R);
+#set_random(model1,"idp",P);
+#set_random(model1,"idg",pedigree,G);
+#outputMCMCsamples(model1)
+#out1=runMCMC(model1,phenotypes,chain_length=60000,output_samples_frequency=10,outputEBV=false);
+
+#Whole evaluation 
+
+chmod a+x+u  ../*
+JWAS
+cd <current>
+julia
+
+using JWAS,JWAS.Datasets,DataFrames,CSV,DelimitedFiles
+
+phenotypes = CSV.read("phenotypes_1235",delim = ',',header=true)
+pedigree   = get_pedigree("pedigree_1235",separator=",",header=true);
+phenotypes[1] = map(x -> string(x), phenotypes[1]);
+
+model_equation="weight = idp + idg + cg"
+G = 0.45
+P = 0.42
+R = 0.25
+
+model1 = build_model(model_equation,R);
+set_random(model1,"idp",P);
+set_random(model1,"idg",pedigree,G);
+
+gauss_solve_1235 = solve(model1,phenotypes;solver="GaussSeidel",printout_frequency=10,tolerance = 0.000001,maxiter = 60000)
+writedlm("/mnt/work/melissa/JWAS_GS_solver_1235", gauss_solve_1235, ',')
+
+#Partial 1 evaluation 
+
+chmod a+x+u  ../*
+JWAS
+cd <current>
+julia
+
+using JWAS,JWAS.Datasets,DataFrames,CSV,DelimitedFiles
+
+phenotypes = CSV.read("phenotypes_1235_partial1",delim = ',',header=true)
+pedigree   = get_pedigree("pedigree_1235",separator=",",header=true);
+phenotypes[1] = map(x -> string(x), phenotypes[1]);
+
+model_equation="weight = idp + idg + cg"
+G = 0.45
+P = 0.42
+R = 0.25
+
+model1 = build_model(model_equation,R);
+set_random(model1,"idp",P);
+set_random(model1,"idg",pedigree,G);
+
+gauss_solve_1235_partial1 = solve(model1,phenotypes;solver="GaussSeidel",printout_frequency=10,tolerance = 0.000001,maxiter = 60000)
+writedlm("/mnt/work/melissa/JWAS_GS_solver_1235_partial1", gauss_solve_1235_partial1, ',')
+
+#Partial 2 evaluation 
+
+chmod a+x+u  ../*
+JWAS
+cd <current>
+julia
+
+using JWAS,JWAS.Datasets,DataFrames,CSV,DelimitedFiles
+
+phenotypes = CSV.read("phenotypes_1235_partial2",delim = ',',header=true)
+pedigree   = get_pedigree("pedigree_1235",separator=",",header=true);
+phenotypes[1] = map(x -> string(x), phenotypes[1]);
+
+model_equation="weight = idp + idg + cg"
+G = 0.45
+P = 0.42
+R = 0.25
+
+model1 = build_model(model_equation,R);
+set_random(model1,"idp",P);
+set_random(model1,"idg",pedigree,G);
+
+gauss_solve_1235_partial2 = solve(model1,phenotypes;solver="GaussSeidel",printout_frequency=10,tolerance = 0.000001,maxiter = 60000)
+writedlm("/mnt/work/melissa/JWAS_GS_solver_1235_partial2", gauss_solve_1235_partial2, ',')
+
+#1235 AE run: extract solutions into seperate files
+
+grep 1:cg        JWAS_GS_solver_1235 | awk '{print $3}'| awk -F, '{print $1,$2}' | sort -k1,1   >     JWAS_GS_solver_cg_1235.tmp
+grep 1:idg       JWAS_GS_solver_1235 | awk '{print $3}'| awk -F, '{print $1,$2}' | sort -k1,1   >     JWAS_GS_solver_bv_1235.tmp
+grep 1:idp       JWAS_GS_solver_1235 | awk '{print $3}'| awk -F, '{print $1,$2}' | sort -k1,1   >     JWAS_GS_solver_p_1235.tmp
+
+#1235_partial1 AE run: extract solutions into seperate files
+
+grep 1:cg        JWAS_GS_solver_1235_partial1 | awk '{print $3}'| awk -F, '{print $1,$2}' | sort -k1,1   >     JWAS_GS_solver_cg_1235_partial1.tmp
+grep 1:idg       JWAS_GS_solver_1235_partial1 | awk '{print $3}'| awk -F, '{print $1,$2}' | sort -k1,1   >     JWAS_GS_solver_bv_1235_partial1.tmp
+grep 1:idp       JWAS_GS_solver_1235_partial1 | awk '{print $3}'| awk -F, '{print $1,$2}' | sort -k1,1   >     JWAS_GS_solver_p_1235_partial1.tmp
+
+#1235_partial2 AE run: extract solutions into seperate files
+
+grep 1:cg        JWAS_GS_solver_1235_partial2 | awk '{print $3}'| awk -F, '{print $1,$2}' | sort -k1,1   >     JWAS_GS_solver_cg_1235_partial2.tmp
+grep 1:idg       JWAS_GS_solver_1235_partial2 | awk '{print $3}'| awk -F, '{print $1,$2}' | sort -k1,1   >     JWAS_GS_solver_bv_1235_partial2.tmp
+grep 1:idp       JWAS_GS_solver_1235_partial2 | awk '{print $3}'| awk -F, '{print $1,$2}' | sort -k1,1   >     JWAS_GS_solver_p_1235_partial2.tmp
+
+#Create a file containing main BVs for all validaton animals excluded from  partial 1 and partial 2, as well as the validation animals in partial 2 with both adolecent and FLW phenotypes
+join rmids_partial1                         JWAS_GS_solver_bv_1235.tmp > EBV_whole_allvalidationids_partial1.tmp
+join rmids_partial2                         JWAS_GS_solver_bv_1235.tmp > EBV_whole_allvalidationids_partial2.tmp
+
+#Create a file containing the validation BVs for the animals that were removed
+join rmids_partial1                         JWAS_GS_solver_bv_1235_partial1.tmp > EBV_partial1_allvalidationids.tmp
+join rmids_partial2                         JWAS_GS_solver_bv_1235_partial2.tmp > EBV_partial2_allvalidationids.tmp
+join partial2_validationids_with123phen.tmp JWAS_GS_solver_bv_1235_partial2.tmp > EBV_partial2_idsw123and5.tmp
+
+
+
+#Validation 
+
+#Dispersion and population accuracy 
+
+#Create a file containing EBVs whole, EBVs partial1 including all validation animals 
+join EBV_partial1_allvalidationids.tmp EBV_whole_allvalidationids_partial1.tmp > id_EBVpartial1_EBVwhole
+awk '{print $2, $3}' id_EBVpartial1_EBVwhole | corr > corr_reg_EBVwholeonEBVpartial.tmp
+awk 'NR==6{print $9}' corr_reg_EBVwholeonEBVpartial.tmp > dispersion.tmp
+awk 'NR==5{print $3}' corr_reg_EBVwholeonEBVpartial.tmp > population_accuracy.tmp
+
+#Mean bias
+awk '{print $3}' id_EBVpartial1_EBVwhole | mnvar | awk 'NR==3{print $3}' > meanEBV_whole.tmp
+awk '{print $2}' id_EBVpartial1_EBVwhole | mnvar | awk 'NR==3{print $3}' > meanEBV_partial1.tmp
+paste meanEBV_whole.tmp meanEBV_partial1.tmp | awk '{print $1"-"$2"="($1-$2)}' > mean_bias.tmp
+
+#count of validation animals 
+
+awk 'NR==4{print $3}' corr_reg_EBVwholeonEBVpartial.tmp > countvalidationanimals.tmp
+
+#Accuracy of forward prediction 
+
+#Create a file containing EBV partial and first lactation phenotype 
+join EBV_partial1_allvalidationids.tmp varadj_weight_deviation_5  | awk '{print $1, $2, $4}' > id_EBVpartial1_FLWphen.tmp
+join EBV_partial2_idsw123and5.tmp      varadj_weight_deviation_5  | awk '{print $1, $2, $4}' > id_EBVpartial2_FLWphen_idsw123and5.tmp
+
+#Correlation between EBV and FLW phenotype were all phenotypes for validation animal are removed
+awk '{print $2, $3}' id_EBVpartial1_FLWphen.tmp | corr | awk 'NR==5{print $3}' > PredictiveAbility_allphenrm.tmp 
+awk '{print $2, $3}' id_EBVpartial1_FLWphen.tmp | corr | awk 'NR==4{print $3}' > PredictiveAbility_allphenrm_count.tmp
+
+#Correlation between EBV and FLW phenotype were animals have 123 and 5 and only 5 is removed.
+awk '{print $2, $3}' id_EBVpartial2_FLWphen_idsw123and5.tmp | corr |  awk 'NR==5{print $3}' > PredictiveAbility_5rm.tmp
+awk '{print $2, $3}' id_EBVpartial2_FLWphen_idsw123and5.tmp | corr |  awk 'NR==4{print $3}' > PredictiveAbility_5rm_count.tmp
+
+
+echo -e          "REPORT\n" > REPORT_repeatedmeasures_validation
+echo -e          "Validation of repeated measures analysis\n" >> REPORT_repeatedmeasures_validation
+awk '{print "Mean Bias",$0}'                     mean_bias.tmp >> REPORT_repeatedmeasures_validation
+awk '{print "Dispersion",$0}'                   dispersion.tmp >> REPORT_repeatedmeasures_validation
+awk '{print "Population Accuracy",$0}' population_accuracy.tmp >> REPORT_repeatedmeasures_validation
+awk '{print "Number of animals", $0}' countvalidationanimals.tmp >> REPORT_repeatedmeasures_validation
+echo -e          " \n" >> REPORT_repeatedmeasures_validation
+echo -e          "Predictive ability of repeated measures analysis\n" >> REPORT_repeatedmeasures_validation
+awk '{print "Predictive Ability (all phenotypes for validation animals removed)",$0}'    PredictiveAbility_allphenrm.tmp >> REPORT_repeatedmeasures_validation
+awk '{print "Number of animals", $0}' PredictiveAbility_allphenrm_count.tmp >> REPORT_repeatedmeasures_validation
+echo -e          " \n" >> REPORT_repeatedmeasures_validation
+awk '{print "Predictive Ability (only FLW phenotypes for validation animals removed)",$0}' PredictiveAbility_5rm.tmp >> REPORT_repeatedmeasures_validation
+awk '{print "Number of animals", $0}' PredictiveAbility_5rm_count.tmp >> REPORT_repeatedmeasures_validation
+
+
+
+sort pedigree_source > pedigree_source.srt
+
+#File containing dam id for all validation animals 
+join rmids_partial1 pedigree_source.srt | awk '{print $3}' | sort -u > dam_ids_rmanimals
+
+#Count of all dams with progeny in the phenotype file 
+wc dam_ids_rmanimals
+# 66553  66553 598900 dam_ids_rmanimals
+
+#File containing the ids of dams of validation animals that also have a phenotype record
+join ids_1235.tmp dam_ids_rmanimals | wc
+#   8778    8778   78997
+
+
+
+#File containing the IDs of the dams of animals with phenotypes 
+join ids_1235.tmp pedigree_source.srt | awk '{print $3}' | sort -u > dam_ids_all
+
+#count of all dams that have progeny with a phenotype
+wc dam_ids_all
+# 413691  413691 3621526 dam_ids_all
+
+#Count of dams that have a phenotype reocrd themselves 
+join ids_1235.tmp dam_ids_all | wc
+#  52227   52227  459120
+
+
+#File containing ids of dams with progeny in the phenotype file, who also have a phenotype
+join ids_1235.tmp dam_ids_all | sort > dams_wphen
+
+#File containing IDs of all animals in the pedigree file whose dam has a phenotype
+sort -k3,3 pedigree_source.srt > pedigree_source.srtdam
+join -1 1 -2 3 dams_wphen pedigree_source.srtdam | awk '{print $2}' | sort > animals_wdamhasphen
+
+#Create a file including the 1235EBV and ommitted phenotype for animals whose dam has a phenotype included in the EBV
+join id_EBVpartial1_FLWphen.tmp animals_wdamhasphen | awk '{print $2, $3}' | corr        
+#stdin
+#---------------
+#n = 1297
+#Correlation = 0.342078
+#Regression of column 2 on column 1 = 1.065409
+
+#The corr between EBV and ommited FLW for this subset of valiation animals is 0.31 in the FLW univariate analyis - despite these adolescent phenotypes being excluded. Mabye a better recorded subset of animals? 
+
+#Count of sires 
+join countanimals_damhasphen pedigree_source.srt | awk '{print $2}' | sort | uniq -c | awk '$1>9{print $0}' | wc
+
+
+
+

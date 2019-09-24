@@ -1,0 +1,591 @@
+#Author: Melissa Stephen
+
+#Run from a working directory  
+#Input files w1 - w6 should exist in the current directory (created using 2_phenotypepreprocessing script) 
+#Input file pedigree_source should exist in the current directory (created using the 1_pedigreepreprocessing script)  
+#list of validation animals for the partial runs should be created: partial_rmids.srt (list of all 2015 born animals with phenotype) 
+
+
+#Create phenotype and pedigree files for single trait MME, Solve the MME using JWAS, generate weight deviation files that are adjusted for heteogenous variance across age categories. 
+
+#Create phenotype_whole and phenotype_partial phenotypes for WW,PW,YW and FLW age categories
+
+echo 'id,cg,age_dev,weight'                                            > phenotypes_1.txt 
+awk '{print $1","$3","$7","$4}' w1                                    >> phenotypes_1.txt         #Phenotype whole 
+echo 'id,cg,age_dev,weight'                                            > phenotypes_1_partial.txt
+join -v 2 partial_rmids.srt     w1 | awk '{print $1","$3","$7","$4}'  >> phenotypes_1_partial.txt #Phenotype partial
+join partial_rmids.srt          w1 | awk '{print $1}'                  > partialrmid_1             #list of removed ids
+
+echo 'id,cg,age_dev,weight'                                            > phenotypes_2.txt
+awk '{print $1","$3","$7","$4}' w2                                    >> phenotypes_2.txt         #Phenotype whole 
+echo 'id,cg,age_dev,weight'                                            > phenotypes_2_partial.txt
+join -v 2 partial_rmids.srt     w2 | awk '{print $1","$3","$7","$4}'  >> phenotypes_2_partial.txt #Phenotype partial
+join partial_rmids.srt          w2 | awk '{print $1}'                  > partialrmid_2             #list of removed ids
+
+echo 'id,cg,age_dev,weight'                                            > phenotypes_3.txt
+awk '{print $1","$3","$7","$4}' w3                                    >> phenotypes_3.txt         #Phenotype whole 
+echo 'id,cg,age_dev,weight'                                            > phenotypes_3_partial.txt
+join -v 2 partial_rmids.srt     w3 | awk '{print $1","$3","$7","$4}'  >> phenotypes_3_partial.txt #Phenotype partial
+join partial_rmids.srt          w3 | awk '{print $1}'                  > partialrmid_3             #list of removed ids
+
+echo 'id,cg,age_dev,days_part,weight'                                       > phenotypes_5.txt
+awk '{print $1","$3","$7","$9","$4}' w5                                    >> phenotypes_5.txt         #Phenotype whole 
+echo 'id,cg,age_dev,days_part,weight'                                       > phenotypes_5_partial.txt
+join -v 2 partial_rmids.srt     w5 | awk '{print $1","$3","$7","$9","$4}'  >> phenotypes_5_partial.txt #Phenotype partial
+join partial_rmids.srt          w5 | awk '{print $1}'                       > partialrmid_5             #list of removed ids
+
+#Create pedigree files for each univariate run 
+
+awk  '{print $1}' w1                                                                     > ids.tmp
+nGenPedBuilder.sh ids.tmp pedigree_source 4
+stack_ped newPed.4 ped.stk
+echo "id,sire,dam"                                                                       > pedigree_1.txt
+sed 's/\./0/g' ped.stk | sed s/" "/,/g                                                   >> pedigree_1.txt
+rm ped.stk newPed.4 *tmp*
+
+awk  '{print $1}' w2                                                                     > ids.tmp
+nGenPedBuilder.sh ids.tmp pedigree_source 4
+stack_ped newPed.4 ped.stk
+echo "id,sire,dam"                                                                       > pedigree_2.txt
+sed 's/\./0/g' ped.stk | sed s/" "/,/g                                                  >> pedigree_2.txt
+rm ped.stk newPed.4 *tmp*
+
+awk  '{print $1}' w3                                                                     > ids.tmp
+nGenPedBuilder.sh ids.tmp pedigree_source 4
+stack_ped newPed.4 ped.stk
+echo "id,sire,dam"                                                                       > pedigree_3.txt
+sed 's/\./0/g' ped.stk | sed s/" "/,/g                                                  >> pedigree_3.txt
+rm ped.stk newPed.4 *tmp*
+
+awk  '{print $1}' w5                                                                     > ids.tmp
+nGenPedBuilder.sh ids.tmp pedigree_source 4
+stack_ped newPed.4 ped.stk 
+echo "id,sire,dam"                                                                       > pedigree_5.txt
+sed 's/\./0/g' ped.stk | sed s/" "/,/g                                                  >> pedigree_5.txt
+rm ped.stk newPed.4 *tmp*
+
+
+#Run all single trait analysis in JWAS 
+#Note: the MCMC sections of code are #'d these are only required to estimate the variance components for each time slice (which are then be used as fixed variance components for the gauss solver). 
+
+#Generate solutions for category WW (1)
+
+chmod a+x+u  ../*
+JWAS
+cd <current>
+julia
+
+using JWAS,JWAS.Datasets,DataFrames,CSV,DelimitedFiles
+
+phenotypes = CSV.read("phenotypes_1.txt",delim = ',',header=true)
+pedigree   = get_pedigree("pedigree_1.txt",separator=",",header=true);
+
+phenotypes[1] = map(x -> string(x), phenotypes[1]);
+
+model_equation1 ="weight = cg + age_dev + id"
+R = 146
+model1 = build_model(model_equation1,R);
+set_covariate(model1,"age_dev")
+G = 80
+set_random(model1,"id",pedigree,G);
+
+gauss_solve = solve(model1,phenotypes;solver="GaussSeidel",printout_frequency=200,tolerance = 0.000001,maxiter = 40000)
+gauss_soln = gauss_solve[:,2]
+
+#model_equation1 ="weight = cg + age_dev + id"
+#R = 146
+#model1 = build_model(model_equation1,R);
+#set_covariate(model1,"age_dev")
+#G = 80
+#set_random(model1,"id",pedigree,G);
+
+#outputMCMCsamples(model1)
+#out1=runMCMC(model1,phenotypes,chain_length=60000,output_samples_frequency=10,outputEBV=true,starting_value=gauss_soln);
+
+writedlm("JWAS_GS_solver_1.txt", gauss_solve, ',')
+
+########################
+######################
+
+#Generate validation solutions for ww category (1) 
+
+chmod a+x+u  ../*
+JWAS
+cd /mnt/work/melissa
+julia
+
+using JWAS,JWAS.Datasets,DataFrames,CSV,DelimitedFiles
+
+phenotypes = CSV.read("phenotypes_1_partial.txt",delim = ',',header=true)
+pedigree   = get_pedigree("pedigree_1.txt",separator=",",header=true);
+
+phenotypes[1] = map(x -> string(x), phenotypes[1]);
+
+model_equation1 ="weight = cg + age_dev + id"
+R = 146
+model1 = build_model(model_equation1,R);
+set_covariate(model1,"age_dev")
+G = 80
+set_random(model1,"id",pedigree,G);
+
+gauss_solve = solve(model1,phenotypes;solver="GaussSeidel",printout_frequency=200,tolerance = 0.000001,maxiter = 40000)
+
+writedlm("JWAS_GS_solver_1_partial.txt", gauss_solve, ',')
+
+exit()
+exit
+
+########################
+######################
+
+#Generate solutions for category PW (2)
+
+chmod a+x+u  ../*
+JWAS
+cd <current>
+julia
+
+using JWAS,JWAS.Datasets,DataFrames,CSV,DelimitedFiles
+phenotypes = CSV.read("phenotypes_2.txt",delim = ',',header=true)
+pedigree   = get_pedigree("pedigree_2.txt",separator=",",header=true);
+
+phenotypes[1] = map(x -> string(x), phenotypes[1]);
+
+model_equation1 ="weight = cg + age_dev + id"
+R = 227
+model1 = build_model(model_equation1,R);
+set_covariate(model1,"age_dev")
+G = 100
+set_random(model1,"id",pedigree,G);
+
+gauss_solve = solve(model1,phenotypes;solver="GaussSeidel",printout_frequency=200,tolerance = 0.000001,maxiter = 40000)
+gauss_soln = gauss_solve[:,2]
+
+#model_equation1 ="weight = cg + age_dev + id"
+#R = 227
+#model1 = build_model(model_equation1,R);
+#set_covariate(model1,"age_dev")
+#G = 100
+#set_random(model1,"id",pedigree,G);
+
+#outputMCMCsamples(model1)
+#out1=runMCMC(model1,phenotypes,chain_length=60000,output_samples_frequency=10,outputEBV=true,starting_value=gauss_soln);
+
+writedlm("JWAS_GS_solver_2.txt", gauss_solve, ',')
+
+########################
+######################
+
+#Generate validation solutions for pw category (2)
+
+chmod a+x+u  ../*
+JWAS
+cd <current>
+julia
+
+using JWAS,JWAS.Datasets,DataFrames,CSV,DelimitedFiles
+
+phenotypes = CSV.read("phenotypes_2_partial.txt",delim = ',',header=true)
+pedigree   = get_pedigree("pedigree_2.txt",separator=",",header=true);
+
+phenotypes[1] = map(x -> string(x), phenotypes[1]);
+
+model_equation1 ="weight = cg + age_dev + id"
+R = 227
+model1 = build_model(model_equation1,R);
+set_covariate(model1,"age_dev")
+G = 100
+set_random(model1,"id",pedigree,G);
+
+gauss_solve = solve(model1,phenotypes;solver="GaussSeidel",printout_frequency=200,tolerance = 0.000001,maxiter = 40000)
+
+writedlm("JWAS_GS_solver_2_partial.txt", gauss_solve, ',')
+
+exit()
+exit
+
+
+########################
+######################
+
+
+#Generate solutions for category YW (3) 
+
+chmod a+x+u  ../*
+JWAS
+cd <current>
+julia
+
+using JWAS,JWAS.Datasets,DataFrames,CSV,DelimitedFiles
+
+phenotypes = CSV.read("phenotypes_3.txt",delim = ',',header=true)
+pedigree   = get_pedigree("pedigree_3.txt",separator=",",header=true);
+
+phenotypes[1] = map(x -> string(x), phenotypes[1]);
+
+model_equation1 ="weight = cg + age_dev + id"
+R = 306
+model1 = build_model(model_equation1,R);
+set_covariate(model1,"age_dev")
+G = 146
+set_random(model1,"id",pedigree,G);
+
+gauss_solve = solve(model1,phenotypes;solver="GaussSeidel",printout_frequency=200,tolerance = 0.000001,maxiter = 40000)
+gauss_soln = gauss_solve[:,2]
+
+#model_equation1 ="weight = cg + age_dev + id"
+#R = 306
+#model1 = build_model(model_equation1,R);
+#set_covariate(model1,"age_dev")
+#G = 146
+#set_random(model1,"id",pedigree,G);
+
+#outputMCMCsamples(model1)
+#out1=runMCMC(model1,phenotypes,chain_length=60000,output_samples_frequency=10,outputEBV=true,starting_value=gauss_soln);
+
+writedlm("JWAS_GS_solver_3.txt", gauss_solve, ',')
+
+########################
+######################
+
+#Validation of category YW (3)
+
+chmod a+x+u  ../*
+JWAS
+cd <current>
+julia
+
+using JWAS,JWAS.Datasets,DataFrames,CSV,DelimitedFiles
+
+phenotypes = CSV.read("phenotypes_3_partial.txt",delim = ',',header=true)
+pedigree   = get_pedigree("pedigree_3.txt",separator=",",header=true);
+
+phenotypes[1] = map(x -> string(x), phenotypes[1]);
+
+model_equation1 ="weight = cg + age_dev + id"
+R = 306
+model1 = build_model(model_equation1,R);
+set_covariate(model1,"age_dev")
+G = 146
+set_random(model1,"id",pedigree,G);
+
+gauss_solve = solve(model1,phenotypes;solver="GaussSeidel",printout_frequency=200,tolerance = 0.000001,maxiter = 40000)
+
+writedlm("JWAS_GS_solver_3_partial.txt", gauss_solve, ',')
+
+exit()
+exit
+
+########################
+######################
+
+#Generate solutions for category PC (5) (note: additional fixed effect is days from partuition) 
+
+chmod a+x+u  ../*
+JWAS
+cd <current>
+julia
+
+using JWAS,JWAS.Datasets,DataFrames,CSV,DelimitedFiles
+
+
+phenotypes = CSV.read("phenotypes_5.txt",delim = ',',header=true)
+pedigree   = get_pedigree("pedigree_5.txt",separator=",",header=true);
+
+phenotypes[1] = map(x -> string(x), phenotypes[1]);
+
+model_equation1 ="weight = cg + age_dev + days_part + id"
+R = 522
+model1 = build_model(model_equation1,R);
+set_covariate(model1,"age_dev", "days_part")
+G = 538
+set_random(model1,"id",pedigree,G);
+
+gauss_solve = solve(model1,phenotypes;solver="GaussSeidel",printout_frequency=200,tolerance = 0.000001,maxiter = 40000)
+gauss_soln = gauss_solve[:,2]
+
+#model_equation1 ="weight = cg + age_dev + days_part + id"
+#R = 522
+#model1 = build_model(model_equation1,R);
+#set_covariate(model1,"age_dev", "days_part")
+#G = 538
+#set_random(model1,"id",pedigree,G);
+
+#outputMCMCsamples(model1)
+#out1=runMCMC(model1,phenotypes,chain_length=60000,output_samples_frequency=10,outputEBV=true,starting_value=gauss_soln);
+
+writedlm("JWAS_GS_solver_5.txt", gauss_solve, ',')
+
+
+########################
+######################
+
+#Generate validation solutions for PC category (5) 
+
+chmod a+x+u  ../*
+JWAS
+cd <current>
+julia
+
+using JWAS,JWAS.Datasets,DataFrames,CSV,DelimitedFiles
+
+phenotypes = CSV.read("phenotypes_5_partial.txt",delim = ',',header=true)
+pedigree   = get_pedigree("pedigree_5.txt",separator=",",header=true);
+
+phenotypes[1] = map(x -> string(x), phenotypes[1]);
+
+model_equation1 ="weight = cg + age_dev + days_part + id"
+R = 522
+model1 = build_model(model_equation1,R);
+set_covariate(model1,"age_dev", "days_part")
+G = 538
+set_random(model1,"id",pedigree,G);
+
+gauss_solve = solve(model1,phenotypes;solver="GaussSeidel",printout_frequency=200,tolerance = 0.000001,maxiter = 40000)
+
+writedlm("JWAS_GS_solver_5_partial.txt", gauss_solve, ',')
+
+exit()
+exit
+
+########################
+######################
+
+#Extract the solutions out into separate files, and join to the phenotype file.  Repeate for each category  
+
+#Extract solutions into separate files 
+
+grep 1:age_dev   JWAS_GS_solver_1.txt | awk '{print $3}'| awk -F, '{print $1,$2}' | sort -k1,1  > JWAS_GS_solver_agedev_1.tmp
+grep 1:cg        JWAS_GS_solver_1.txt | awk '{print $3}'| awk -F, '{print $1,$2}' | sort -k1,1  >     JWAS_GS_solver_cg_1.tmp
+grep 1:id        JWAS_GS_solver_1.txt | awk '{print $3}'| awk -F, '{print $1,$2}' | sort -k1,1  >     JWAS_GS_solver_bv_1.tmp
+
+grep 1:age_dev   JWAS_GS_solver_1_partial.txt | awk '{print $3}'| awk -F, '{print $1,$2}' | sort -k1,1  > JWAS_GS_solver_agedev_1_partial.tmp
+grep 1:cg        JWAS_GS_solver_1_partial.txt | awk '{print $3}'| awk -F, '{print $1,$2}' | sort -k1,1  >     JWAS_GS_solver_cg_1_partial.tmp
+grep 1:id        JWAS_GS_solver_1_partial.txt | awk '{print $3}'| awk -F, '{print $1,$2}' | sort -k1,1  >     JWAS_GS_solver_bv_1_partial.tmp
+
+grep 1:age_dev   JWAS_GS_solver_2.txt | awk '{print $3}'| awk -F, '{print $1,$2}' | sort -k1,1  > JWAS_GS_solver_agedev_2.tmp
+grep 1:cg        JWAS_GS_solver_2.txt | awk '{print $3}'| awk -F, '{print $1,$2}' | sort -k1,1  >     JWAS_GS_solver_cg_2.tmp
+grep 1:id        JWAS_GS_solver_2.txt | awk '{print $3}'| awk -F, '{print $1,$2}' | sort -k1,1  >     JWAS_GS_solver_bv_2.tmp
+
+grep 1:age_dev   JWAS_GS_solver_2_partial.txt | awk '{print $3}'| awk -F, '{print $1,$2}' | sort -k1,1  > JWAS_GS_solver_agedev_2_partial.tmp
+grep 1:cg        JWAS_GS_solver_2_partial.txt | awk '{print $3}'| awk -F, '{print $1,$2}' | sort -k1,1  >     JWAS_GS_solver_cg_2_partial.tmp
+grep 1:id        JWAS_GS_solver_2_partial.txt | awk '{print $3}'| awk -F, '{print $1,$2}' | sort -k1,1  >     JWAS_GS_solver_bv_2_partial.tmp
+
+grep 1:age_dev   JWAS_GS_solver_3.txt | awk '{print $3}'| awk -F, '{print $1,$2}' | sort -k1,1  > JWAS_GS_solver_agedev_3.tmp
+grep 1:cg        JWAS_GS_solver_3.txt | awk '{print $3}'| awk -F, '{print $1,$2}' | sort -k1,1  >     JWAS_GS_solver_cg_3.tmp
+grep 1:id        JWAS_GS_solver_3.txt | awk '{print $3}'| awk -F, '{print $1,$2}' | sort -k1,1  >     JWAS_GS_solver_bv_3.tmp
+
+grep 1:age_dev   JWAS_GS_solver_3_partial.txt | awk '{print $3}'| awk -F, '{print $1,$2}' | sort -k1,1  > JWAS_GS_solver_agedev_3_partial.tmp
+grep 1:cg        JWAS_GS_solver_3_partial.txt | awk '{print $3}'| awk -F, '{print $1,$2}' | sort -k1,1  >     JWAS_GS_solver_cg_3_partial.tmp
+grep 1:id        JWAS_GS_solver_3_partial.txt | awk '{print $3}'| awk -F, '{print $1,$2}' | sort -k1,1  >     JWAS_GS_solver_bv_3_partial.tmp
+
+grep 1:age_dev   JWAS_GS_solver_5.txt | awk '{print $3}'| awk -F, '{print $1,$2}' | sort -k1,1  >    JWAS_GS_solver_agedev_5.tmp
+grep 1:cg        JWAS_GS_solver_5.txt | awk '{print $3}'| awk -F, '{print $1,$2}' | sort -k1,1  >        JWAS_GS_solver_cg_5.tmp
+grep 1:id        JWAS_GS_solver_5.txt | awk '{print $3}'| awk -F, '{print $1,$2}' | sort -k1,1  >        JWAS_GS_solver_bv_5.tmp
+grep 1:days_part JWAS_GS_solver_5.txt | awk '{print $3}'| awk -F, '{print $1,$2}' | sort -k1,1  > JWAS_GS_solver_days_part_5.tmp
+
+grep 1:age_dev   JWAS_GS_solver_5_partial.txt | awk '{print $3}'| awk -F, '{print $1,$2}' | sort -k1,1  >    JWAS_GS_solver_agedev_5_partial.tmp
+grep 1:cg        JWAS_GS_solver_5_partial.txt | awk '{print $3}'| awk -F, '{print $1,$2}' | sort -k1,1  >        JWAS_GS_solver_cg_5_partial.tmp
+grep 1:id        JWAS_GS_solver_5_partial.txt | awk '{print $3}'| awk -F, '{print $1,$2}' | sort -k1,1  >        JWAS_GS_solver_bv_5_partial.tmp
+grep 1:days_part JWAS_GS_solver_5_partial.txt | awk '{print $3}'| awk -F, '{print $1,$2}' | sort -k1,1  > JWAS_GS_solver_days_part_5_partial.tmp
+
+#Generate weight deviations for each animal in each category 
+
+#Set the solutions of the fixed covariate as variables to use within the awk program 
+
+age_dev1=$( awk '{print $2}' JWAS_GS_solver_agedev_1.tmp )
+age_dev2=$( awk '{print $2}' JWAS_GS_solver_agedev_2.tmp )
+age_dev3=$( awk '{print $2}' JWAS_GS_solver_agedev_3.tmp )
+age_dev5=$( awk '{print $2}' JWAS_GS_solver_agedev_5.tmp )
+
+days_part5=$( awk '{print $2}' JWAS_GS_solver_days_part_5.tmp )
+
+#remove comma delimitators
+
+sed s/,/" "/g phenotypes_1.txt | sort -k2,2  > phenotypes_1.tmp1
+sed s/,/" "/g phenotypes_2.txt | sort -k2,2  > phenotypes_2.tmp1 
+sed s/,/" "/g phenotypes_3.txt | sort -k2,2  > phenotypes_3.tmp1
+sed s/,/" "/g phenotypes_5.txt | sort -k2,2  > phenotypes_5.tmp1
+
+#Join cg fixed effect solutions to the phenotype file  
+
+join -1 2 -2 1 phenotypes_1.tmp1 JWAS_GS_solver_cg_1.tmp | awk '{print $2, $1, $3, $4, $5}'     > phenotypes_1.tmp2
+join -1 2 -2 1 phenotypes_2.tmp1 JWAS_GS_solver_cg_2.tmp | awk '{print $2, $1, $3, $4, $5}'     > phenotypes_2.tmp2
+join -1 2 -2 1 phenotypes_3.tmp1 JWAS_GS_solver_cg_3.tmp | awk '{print $2, $1, $3, $4, $5}'     > phenotypes_3.tmp2
+join -1 2 -2 1 phenotypes_5.tmp1 JWAS_GS_solver_cg_5.tmp | awk '{print $2, $1, $3, $4, $5, $6}' > phenotypes_5.tmp2
+
+#Create headers for the weight_deviation files 
+
+echo "id cg weight" > weight_deviation_1
+echo "id cg weight" > weight_deviation_2
+echo "id cg weight" > weight_deviation_3
+echo "id cg weight" > weight_deviation_5
+
+awk -v age_dev=$age_dev1 '{print $1, $2, ($4-(($3*age_dev)+$5))}' phenotypes_1.tmp2 | sort >> weight_deviation_1
+awk -v age_dev=$age_dev2 '{print $1, $2, ($4-(($3*age_dev)+$5))}' phenotypes_2.tmp2 | sort >> weight_deviation_2
+awk -v age_dev=$age_dev3 '{print $1, $2, ($4-(($3*age_dev)+$5))}' phenotypes_3.tmp2 | sort >> weight_deviation_3
+
+awk -v age_dev=$age_dev5 -v days_part=$days_part5 '{print $1, $2, ($5-(($3*age_dev)+($4*days_part)+$6))}' phenotypes_5.tmp2 | sort >> weight_deviation_5
+
+awk 'NR>1{print $0}' weight_deviation_1 > weight_deviation_1.srt
+awk 'NR>1{print $0}' weight_deviation_2 > weight_deviation_2.srt
+awk 'NR>1{print $0}' weight_deviation_3 > weight_deviation_3.srt
+awk 'NR>1{print $0}' weight_deviation_5 > weight_deviation_5.srt
+
+#########validate each of the single category runs
+
+#Create a file containing the validation BVs for the animals that were removed
+join partialrmid_1    JWAS_GS_solver_bv_1_partial.tmp      > JWAS_GS_solver_bv_1_partial_rmanimals
+join partialrmid_2    JWAS_GS_solver_bv_2_partial.tmp      > JWAS_GS_solver_bv_2_partial_rmanimals
+join partialrmid_3    JWAS_GS_solver_bv_3_partial.tmp      > JWAS_GS_solver_bv_3_partial_rmanimals
+join partialrmid_5    JWAS_GS_solver_bv_5_partial.tmp      > JWAS_GS_solver_bv_5_partial_rmanimals
+
+#Population accuracy and Dispersion
+ 
+#Join breeding value(main) with breeding value (validation) for removed animals. Regression of more on less should be greater than 1 
+join JWAS_GS_solver_bv_1_partial_rmanimals     JWAS_GS_solver_bv_1.tmp    | awk '{print $2, $3}' | corr > corr_reg_bvonbvpartial1.tmp
+awk 'NR==6{print $9}' corr_reg_bvonbvpartial1.tmp > dispersion1.tmp
+awk 'NR==5{print $3}' corr_reg_bvonbvpartial1.tmp > population_accuracy1.tmp
+awk 'NR==4{print $3}' corr_reg_bvonbvpartial1.tmp > count_valiationanimals_1
+
+join JWAS_GS_solver_bv_2_partial_rmanimals     JWAS_GS_solver_bv_2.tmp    | awk '{print $2, $3}' | corr > corr_reg_bvonbvpartial2.tmp
+awk 'NR==6{print $9}' corr_reg_bvonbvpartial2.tmp > dispersion2.tmp
+awk 'NR==5{print $3}' corr_reg_bvonbvpartial2.tmp > population_accuracy2.tmp
+awk 'NR==4{print $3}' corr_reg_bvonbvpartial2.tmp > count_valiationanimals_2
+
+join JWAS_GS_solver_bv_3_partial_rmanimals     JWAS_GS_solver_bv_3.tmp    | awk '{print $2, $3}' | corr > corr_reg_bvonbvpartial3.tmp
+awk 'NR==6{print $9}' corr_reg_bvonbvpartial3.tmp > dispersion3.tmp
+awk 'NR==5{print $3}' corr_reg_bvonbvpartial3.tmp > population_accuracy3.tmp
+awk 'NR==4{print $3}' corr_reg_bvonbvpartial3.tmp > count_valiationanimals_3
+
+join JWAS_GS_solver_bv_5_partial_rmanimals     JWAS_GS_solver_bv_5.tmp    | awk '{print $2, $3}' | corr > corr_reg_bvonbvpartial5.tmp
+awk 'NR==6{print $9}' corr_reg_bvonbvpartial5.tmp > dispersion5.tmp
+awk 'NR==5{print $3}' corr_reg_bvonbvpartial5.tmp > population_accuracy5.tmp
+awk 'NR==4{print $3}' corr_reg_bvonbvpartial5.tmp > count_valiationanimals_5
+
+#Mean bias
+
+join JWAS_GS_solver_bv_1_partial_rmanimals     JWAS_GS_solver_bv_1.tmp    | awk '{print $2}'| mnvar | awk 'NR==3{print $3}' > meanEBV_whole1.tmp 
+join JWAS_GS_solver_bv_1_partial_rmanimals     JWAS_GS_solver_bv_1.tmp    | awk '{print $3}'| mnvar | awk 'NR==3{print $3}' > meanEBV_partial1.tmp
+paste meanEBV_whole1.tmp meanEBV_partial1.tmp | awk '{print $1" - "$2" = "($1-$2)}' > mean_bias1.tmp
+
+join JWAS_GS_solver_bv_2_partial_rmanimals     JWAS_GS_solver_bv_2.tmp    | awk '{print $2}'| mnvar | awk 'NR==3{print $3}' > meanEBV_whole2.tmp
+join JWAS_GS_solver_bv_2_partial_rmanimals     JWAS_GS_solver_bv_2.tmp    | awk '{print $3}'| mnvar | awk 'NR==3{print $3}' > meanEBV_partial2.tmp
+paste meanEBV_whole2.tmp meanEBV_partial2.tmp | awk '{print $1" - "$2" = "($1-$2)}' > mean_bias2.tmp
+
+
+join JWAS_GS_solver_bv_3_partial_rmanimals     JWAS_GS_solver_bv_3.tmp    | awk '{print $2}'| mnvar | awk 'NR==3{print $3}' > meanEBV_whole3.tmp
+join JWAS_GS_solver_bv_3_partial_rmanimals     JWAS_GS_solver_bv_3.tmp    | awk '{print $3}'| mnvar | awk 'NR==3{print $3}' > meanEBV_partial3.tmp
+paste meanEBV_whole3.tmp meanEBV_partial3.tmp | awk '{print $1" - "$2" = "($1-$2)}' > mean_bias3.tmp
+
+join JWAS_GS_solver_bv_5_partial_rmanimals     JWAS_GS_solver_bv_5.tmp    | awk '{print $2}'| mnvar | awk 'NR==3{print $3}' > meanEBV_whole5.tmp
+join JWAS_GS_solver_bv_5_partial_rmanimals     JWAS_GS_solver_bv_5.tmp    | awk '{print $3}'| mnvar | awk 'NR==3{print $3}' > meanEBV_partial5.tmp
+paste meanEBV_whole5.tmp meanEBV_partial5.tmp | awk '{print $1" - "$2" = "($1-$2)}' > mean_bias5.tmp
+
+#Predictive ability
+
+#Join the mean phenotype files with the Breeding Values produced by the relevant validation AE run
+join JWAS_GS_solver_bv_1_partial_rmanimals weight_deviation_1.srt | awk '{print $2, $4}' | corr > corr_reg_phenoonbv_1_partial.tmp
+awk 'NR==5{print $3}' corr_reg_phenoonbv_1_partial.tmp > predictiveability1.tmp
+
+join JWAS_GS_solver_bv_2_partial_rmanimals weight_deviation_2.srt | awk '{print $2, $4}' | corr > corr_reg_phenoonbv_2_partial.tmp
+awk 'NR==5{print $3}' corr_reg_phenoonbv_2_partial.tmp > predictiveability2.tmp
+
+join JWAS_GS_solver_bv_3_partial_rmanimals weight_deviation_3.srt | awk '{print $2, $4}' | corr > corr_reg_phenoonbv_3_partial.tmp
+awk 'NR==5{print $3}' corr_reg_phenoonbv_3_partial.tmp > predictiveability3.tmp
+
+join JWAS_GS_solver_bv_5_partial_rmanimals weight_deviation_5.srt | awk '{print $2, $4}' | corr > corr_reg_phenoonbv_5_partial.tmp
+awk 'NR==5{print $3}' corr_reg_phenoonbv_5_partial.tmp > predictiveability5.tmp
+
+##########Generate files that have standard variance for the repeated measures analysis
+
+#Set the standard deviation of y(i) as an awk variable 
+
+sd_w1_dev=$(awk 'NR>1{print $3}' weight_deviation_1 | mnvar | awk 'NR==4{print $3}' | awk '{print sqrt($1)}') 
+sd_w2_dev=$(awk 'NR>1{print $3}' weight_deviation_2 | mnvar | awk 'NR==4{print $3}' | awk '{print sqrt($1)}')
+sd_w3_dev=$(awk 'NR>1{print $3}' weight_deviation_3 | mnvar | awk 'NR==4{print $3}' | awk '{print sqrt($1)}')
+sd_w5_dev=$(awk 'NR>1{print $3}' weight_deviation_5 | mnvar | awk 'NR==4{print $3}' | awk '{print sqrt($1)}')
+
+echo $sd_w1_dev > sd_w1_dev
+echo $sd_w2_dev > sd_w2_dev
+echo $sd_w3_dev > sd_w3_dev
+echo $sd_w5_dev > sd_w5_dev
+
+#Produce a file that contains the weight deviations, adjusted for the mean var of each time slice. headers: id,cg,weight 
+
+awk -v sd_w1_dev=$sd_w1_dev 'NR>1{print $1, $2, ($3/sd_w1_dev)}' weight_deviation_1 | sort -k1,1  > varadj_weight_deviation_1
+awk -v sd_w2_dev=$sd_w2_dev 'NR>1{print $1, $2, ($3/sd_w2_dev)}' weight_deviation_2 | sort -k1,1  > varadj_weight_deviation_2
+awk -v sd_w3_dev=$sd_w3_dev 'NR>1{print $1, $2, ($3/sd_w3_dev)}' weight_deviation_3 | sort -k1,1  > varadj_weight_deviation_3
+awk -v sd_w5_dev=$sd_w5_dev 'NR>1{print $1, $2, ($3/sd_w5_dev)}' weight_deviation_5 | sort -k1,1  > varadj_weight_deviation_5
+
+#Generate the variance of y(i) to check variance adjustment 
+
+awk '{print $3}' varadj_weight_deviation_1 | mnvar | awk 'NR==4{print $3}' | awk '{print sqrt($1)}' > sd_w1_dev_varadj
+awk '{print $3}' varadj_weight_deviation_2 | mnvar | awk 'NR==4{print $3}' | awk '{print sqrt($1)}' > sd_w2_dev_varadj
+awk '{print $3}' varadj_weight_deviation_3 | mnvar | awk 'NR==4{print $3}' | awk '{print sqrt($1)}' > sd_w3_dev_varadj
+awk '{print $3}' varadj_weight_deviation_5 | mnvar | awk 'NR==4{print $3}' | awk '{print sqrt($1)}' > sd_w5_dev_varadj
+
+#Produce a report showing the variance before and after the variance adjustment 
+
+echo -e          "REPORT\n" > REPORT_variance_adjustment
+echo -e          "Check of variance adjustment (1,2,3,5 age slices)\n"               >> REPORT_variance_adjustment
+
+echo -e          "Weaning Weight (WW) category\n"                                    >> REPORT_variance_adjustment
+
+awk '{print "Standard deviation before variance adjustment  ", $1}' sd_w1_dev        >> REPORT_variance_adjustment
+awk '{print "Standard deviation after variance adjustment   ", $1}' sd_w1_dev_varadj >> REPORT_variance_adjustment
+echo -e          " \n"                                                               >> REPORT_variance_adjustment
+
+echo -e          "Puberty Weight (PW) category\n"                                    >> REPORT_variance_adjustment
+
+awk '{print "Standard deviation before variance adjustment  ", $1}' sd_w2_dev        >> REPORT_variance_adjustment
+awk '{print "Standard deviation after variance adjustment   ", $1}' sd_w2_dev_varadj >> REPORT_variance_adjustment
+echo -e          " \n"                                                               >> REPORT_variance_adjustment
+
+echo -e          "Yearling Weight (YW) category\n"                                   >> REPORT_variance_adjustment
+
+awk '{print "Standard deviation before variance adjustment  ", $1}' sd_w3_dev        >> REPORT_variance_adjustment
+awk '{print "Standard deviation after variance adjustment   ", $1}' sd_w3_dev_varadj >> REPORT_variance_adjustment
+echo -e          " \n"                                                               >> REPORT_variance_adjustment
+
+echo -e          "Post Calving Weight (PC) category\n"                               >> REPORT_variance_adjustment
+
+awk '{print "Standard deviation before variance adjustment  ", $1}' sd_w5_dev        >> REPORT_variance_adjustment
+awk '{print "Standard deviation after variance adjustment   ", $1}' sd_w5_dev_varadj >> REPORT_variance_adjustment
+echo -e          " \n"                                                               >> REPORT_variance_adjustment
+
+#Produce a report on validation of univariate GS solutions  
+
+echo -e          "REPORT\n" > REPORT_univariate_validation
+echo -e          "Validation of all univariate analyses\n" >> REPORT_univariate_validation
+echo -e          "Validation of Weaning Weight (WW) category\n" >> REPORT_univariate_validation
+awk '{print "Mean Bias",$0}'                     mean_bias1.tmp >> REPORT_univariate_validation
+awk '{print "Dispersion",$0}'                   dispersion1.tmp >> REPORT_univariate_validation
+awk '{print "Population Accuracy",$0}' population_accuracy1.tmp >> REPORT_univariate_validation
+awk '{print "Predictive Ability",$0}'    predictiveability1.tmp >> REPORT_univariate_validation
+
+
+echo -e          " \n" >> REPORT_univariate_validation
+echo -e          "Validation of Puberty Weight (PW) category\n" >> REPORT_univariate_validation
+awk '{print "Mean Bias",$0}'                     mean_bias2.tmp >> REPORT_univariate_validation
+awk '{print "Dispersion",$0}'                   dispersion2.tmp >> REPORT_univariate_validation
+awk '{print "Population Accuracy",$0}' population_accuracy2.tmp >> REPORT_univariate_validation
+awk '{print "Predictive Ability",$0}'    predictiveability2.tmp >> REPORT_univariate_validation
+
+echo -e          " \n" >> REPORT_univariate_validation
+echo -e          "Validation of Yearling Weight (YW) category\n" >> REPORT_univariate_validation
+awk '{print "Mean Bias",$0}'                     mean_bias3.tmp >> REPORT_univariate_validation
+awk '{print "Dispersion",$0}'                   dispersion3.tmp >> REPORT_univariate_validation
+awk '{print "Population Accuracy",$0}' population_accuracy3.tmp >> REPORT_univariate_validation
+awk '{print "Predictive Ability",$0}'    predictiveability3.tmp >> REPORT_univariate_validation
+
+
+echo -e          " \n" >> REPORT_univariate_validation
+echo -e          "Validation of first lactation Weight (FLW) category\n" >> REPORT_univariate_validation
+awk '{print "Mean Bias",$0}'                     mean_bias5.tmp >> REPORT_univariate_validation
+awk '{print "Dispersion",$0}'                   dispersion5.tmp >> REPORT_univariate_validation
+awk '{print "Population Accuracy",$0}' population_accuracy5.tmp >> REPORT_univariate_validation
+awk '{print "Predictive Ability",$0}'    predictiveability5.tmp >> REPORT_univariate_validation
+
+
+

@@ -1,0 +1,128 @@
+#Author: Melissa Stephen
+
+#Input file is 2PedBreed
+#AnimalDurableKey|AnimalCDPSystemIdentifier|BirthID|BreedTypeCode1|Breed16th1|BreedTypeCode2|Breed16th2|BreedTypeCode3|Breed16th3|BreedTypeCode4|Breed16th4|BreedTypeCode5|Breed16th5|BreedTypeCode6|Breed16th6|BreedTypeCode7|Breed16th7|BreedTypeCode8|Breed16th8|SireDurableKey|SireCDPKey|SireBirthID|SireOfficialIndicator|SireBreedTypeCode1|SireBreed16th1|SireBreedTypeCode2|SireBreed16th2|SireBreedTypeCode3|SireBreed16th3|SireBreedTypeCode4|SireBreed16th4|SireBreedTypeCode5|SireBreed16th5|SireBreedTypeCode6|SireBreed16th6|SireBreedTypeCode7|SireBreed16th7|SireBreedTypeCode8|SireBreed16th8|DamDurableKey|DamCDPKey|DamBirthID|DamOfficialIndicator|DamBreedTypeCode1|DamBreed16th1|DamBreedTypeCode2|DamBreed16th2|DamBreedTypeCode3|DamBreed16th3|DamBreedTypeCode4|DamBreed16th4|DamBreedTypeCode5|DamBreed16th5|DamBreedTypeCode6|DamBreed16th6|DamBreedTypeCode7|DamBreed16th7|DamBreedTypeCode8|DamBreed16th8
+
+#File headers 
+# 1   ID = Animal Durable Key (DIGAD)
+# 2   SOC = Sire Official Code 1-6:Bad record, 7:DNA verified 8:Manually Added 9:Assigned through parentage 
+# 3   DOC = Dam Official Code (as above) 
+# 4   SID = Sire animal durable key (DIGAD) 
+# 5   DID = Dam animal durable key (DIGAD)
+# 6   F = Friesian (animal)
+# 7   J = Jersey (animal)
+# 8   A = Ayrshire (animal)
+# 9   O = Other (animal)
+# 10  U = Unknown (animal) note: can be greater than 1 due to bad data. Calculated as (16-(F+J+A+O))/16)
+# 11 12 13 14 15 SF SJ SA SO SU = Sire breed fractions 
+# 16 17 18 19 20 DF DJ DA DO DU = Dam breed fractions 
+# 21  HFJ = Het Friesian x Jersey (SF*DJ)+(DF*SJ) 
+# 22  HFA = Het Friesian x Ayrshire 
+# 23  HFO = Het Friesian x Other 
+# 24  HJA = Het Jersey x Ayrshire 
+# 25  HJO = Het Jersey x Other 
+# 26  HAO = Het Ayrshire x Other
+# 27  AG  = Breed Group the animal is assigned to
+# 28  SG  = Breed Group the sire is assigned to 
+# 29  DG  = Breed Group the dam is assigned to 
+# 30  alt_SDG = Breed Group the sire and/dam can be assigned too, if the breed is unknown (animal assigned to F is progeny is > than 0.93 proportions F)  
+
+#Create a column for each breed, and reformat the data so that the friesian column contains count of 16ths that are friesian, jersey column contains the count of parts jersey etc. 
+
+echo ID SOC DOC SID DID F J A O U SF SJ SA SO SU DF DJ DA DO DU HFJ HFA HFO HJA HJO HAO AG SG DG alt_SDG > breed_ped_breed_het_bg 
+
+awk -F '|' 'NR>1{
+                   FRI  ="0";
+                   JER  ="0";
+                   AYR  ="0";
+                   OTH  ="0";
+                   UNK  ="0";
+                   SFRI ="0";
+                   SJER ="0";
+                   SAYR ="0";
+                   SOTH ="0";
+                   SUNK ="0";
+                   DFRI ="0";
+                   DJER ="0";
+                   DAYR ="0";
+                   DOTH ="0"; 
+                  
+                  for(i=4; i<NF; i+=2)  {
+          
+                   if(i<20&&$i=="FRI"){FRI=$(i+1)}
+              else if(i<20&&$i=="JER"){JER=$(i+1)}
+              else if(i<20&&$i=="AYR"){AYR=$(i+1)}
+              else if(i<20&&$i!="FRI"&&$i!="JER"&&$i!="AYR"&&$(i+1)>0){OTH=$(i+1)}
+              
+              else if(i>23&&i<40&&$i=="FRI"){SFRI=$(i+1)}
+              else if(i>23&&i<40&&$i=="JER"){SJER=$(i+1)}
+              else if(i>23&&i<40&&$i=="AYR"){SAYR=$(i+1)}
+              else if(i>23&&i<40&&$i!="FRI"&&$i!="JER"&&$i!="AYR"&&$(i+1)>0.1){SOTH=$(i+1)} 
+
+              else if(i>43&&i<60&&$i=="FRI"){DFRI=$(i+1)}
+              else if(i>43&&i<60&&$i=="JER"){DJER=$(i+1)}
+              else if(i>43&&i<60&&$i=="AYR"){DAYR=$(i+1)}
+              else if(i>43&&i<60&&$i!="FRI"&&$i!="JER"&&$i!="AYR"&&$(i+1)>0.1){DOTH=$(i+1)}} 
+
+              print $1,$23,$43,$20, $40,
+                    FRI/16, JER/16, AYR/16, OTH/16,(16-(FRI+JER+AYR+OTH))/16,
+                    SFRI/16, SJER/16, SAYR/16, SOTH/16,(16-(SFRI+SJER+SAYR+SOTH))/16, 
+                    DFRI/16, DJER/16, DAYR/16, DOTH/16, (16-(DFRI+DJER+DAYR+DOTH))/16,
+                    (((SFRI/16)*(DJER/16))+((SJER/16)*(DFRI/16))), (((SFRI/16)*(DAYR/16))+((SAYR/16)*(DFRI/16))), (((SFRI/16)*(DOTH/16))+((SOTH/16)*(DFRI/16))), (((SJER/16)*(DAYR/16))+((SAYR/16)*(DJER/16))), (((SJER/16)*(DOTH/16))+((SOTH/16)*(DJER/16))), (((SAYR/16)*(DOTH/16))+((SOTH/16)*(DAYR/16)))
+
+                                                       }' 2PedBreed > tmp_1 
+
+
+#The following code assigns breed groups to the animals 
+
+awk '{
+
+# Now check the sire groups
+
+             if($11>=0.875)  {sg="F"}
+        else if($12>=0.875)  {sg="J"}
+        else if($13>=0.875)  {sg="A"}
+        else if($14>=0.875)  {sg="O"}
+        else if($15>=0.875)  {sg="U"}
+        else                 {sg="X"}
+
+# Then check the dam groups
+
+             if($16>=0.875){dg="F"}
+        else if($17>=0.875){dg="J"}
+        else if($18>=0.875){dg="A"}
+        else if($19>=0.875){dg="O"}
+        else if($20>=0.875){dg="U"}
+        else               {dg="X"}
+
+
+
+#Assign the animal a breed group
+
+             if($6>=0.875) {ag="F"}
+        else if($7>=0.875) {ag="J"}
+        else if($8>=0.875) {ag="A"}
+        else if($9>=0.875) {ag="O"}
+        else if($10>=0.875){ag="U"}
+        else               {ag="X"}
+     
+#determine a sire and dam breed group that can be used if the sire and/or dam breed group is missing. If an animals progeny is more than .93 parts a certain breed, that animal must be at least .875 that breed.
+ 
+             if($6>=0.93){alt_sdg="F"}
+        else if($7>=0.93){alt_sdg="J"}
+        else if($8>=0.93){alt_sdg="A"}
+        else if($9>=0.93){alt_sdg="O"}
+        else if($10>=0.93){alt_sdg="U"}
+        else             {alt_sdg="X"}
+
+
+             {print $0, ag, sg, dg, alt_sdg} }' tmp_1 | sort -k1,1 >> breed_ped_breed_het_bg 
+
+
+awk 'NR>1{print $1, $4, $5}' breed_ped_breed_het_bg > pedigree_source_tmp1
+stack_ped pedigree_source_tmp1 pedigree_source
+
+
+
+
+

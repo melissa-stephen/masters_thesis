@@ -1,0 +1,559 @@
+
+#Author: Melissa Stephen
+#WW(1) PW(2) YW(4) FLW(5): 6x bivariate models 
+
+w1, w2, w3, w5, pedigree_source files must exist in the current directory 
+
+#####
+####
+###
+##
+#
+
+#Weight 1 with Weight 5 
+
+#Extract the column of cgs from each weight, and remove duplicates 
+
+join w1 w5 | awk '{print $3}' | sort -u > cg_ofinterest_w1 
+join w1 w5 | awk '{print $10}' | sort -u > cg_ofinterest_w5 
+
+#Create files with the following headers - three files 1: has wA, does not have wB, 2: has wB does not have wA, 3: has both wA and wB. 
+
+#cgA age_devA weightA cgB age_devB days_partB weightB
+
+#file 1
+
+join -v 1  w1 w5 | awk '{print $1, $3, $7, $4, "CGB", "0", "0","NA"}'                | sort -k2,2 > tmp1
+join -1 2 -2 1 tmp1 cg_ofinterest_w1 | awk '{print $2, $1, $3, $4, $5, $6, $7, $8}' | sort       > w1_no_w5.tmp
+
+#file 2
+
+join -v 2  w1 w5 | awk '{print $1,"CGA","0","NA",$3, $7,$9,$4}'                      | sort -k5,5 > tmp2
+join -1 5 -2 1 tmp2 cg_ofinterest_w5 | awk '{print $2, $3, $4, $5, $1, $6, $7, $8}' | sort       > w5_no_w1.tmp
+
+#file 3
+
+join w1 w5 | awk '{print $1, $3, $7, $4, $10, $14, $16, $11}' > tmp3
+
+echo id cgA age_devA weightA cgB age_devB days_partB weightB > phenotypes_1_5
+cat w1_no_w5.tmp w5_no_w1.tmp tmp3 >> phenotypes_1_5 
+
+#Produce pedigree files 
+
+awk '{print $1}' phenotypes_1_5 | sort -u > ids.tmp
+
+#Run the nGenPedBuilder to build relevant pedigree 
+
+nGenPedBuilder.sh ids.tmp ../pedigree_source 4
+mv newPed.4 pedigree.tmp
+
+#Process the ped files to suit JWAS (replace . with 0 for missing, and change column sep to a comma. 
+
+echo "id,sire,dam"                                                                  > pedigree_1_5
+sed 's/\./0/g' pedigree.tmp | sed s/" "/,/g                                        >> pedigree_1_5
+rm pedigree.tmp
+
+
+chmod a+x+u  ../*
+JWAS
+cd <current>
+julia
+
+using JWAS,JWAS.Datasets,DataFrames,CSV,DelimitedFiles
+phenotypes = CSV.read("phenotypes_1_5",delim = ' ',header=true,missingstrings=["NA"])
+
+pedigree   = get_pedigree("pedigree_1_5",separator=",",header=true);
+phenotypes[1] = map(x -> string(x), phenotypes[1]);
+
+model_equation = "weightA = cgA + age_devA + id
+
+                  weightB = cgB + age_devB + days_partB + id"
+
+R = [129 103
+
+     103 474]
+
+model1 = build_model(model_equation,R);
+
+set_covariate(model1, "age_devA", "age_devB", "days_partB")
+
+G = [69  138
+
+     138  507]
+
+set_random(model1,"id",pedigree,G);
+
+using Random
+
+Random.seed!(1234)
+
+out1=runMCMC(model1,phenotypes,chain_length=90000,output_samples_frequency=10,outputEBV=true);
+
+##########
+#########
+#######
+#####
+###
+#
+
+#Weight 2 with Weight 5 
+
+#Extract the column of cgs from each weight, and remove duplicates 
+
+join w2 w5 | awk '{print $3}' | sort -u > cg_ofinterest_w2
+join w2 w5 | awk '{print $10}' | sort -u > cg_ofinterest_w5
+
+#Create files with the following headers - three files 1: has wA, does not have wB, 2: has wB does not have wA, 3: has both wA and wB. 
+
+#cgA age_devA weightA cgB age_devB days_partB weightB
+
+#file 1
+
+join -v 1  w2 w5 | awk '{print $1, $3, $7, $4, "CGB", "0", "0","NA"}'                | sort -k2,2 > tmp1
+join -1 2 -2 1 tmp1 cg_ofinterest_w2 | awk '{print $2, $1, $3, $4, $5, $6, $7, $8}' | sort       > w2_no_w5.tmp
+
+#file 2
+
+join -v 2  w2 w5 | awk '{print $1,"CGA","0","NA",$3, $7,$9,$4}'                      | sort -k5,5 > tmp2
+join -1 5 -2 1 tmp2 cg_ofinterest_w5 | awk '{print $2, $3, $4, $5, $1, $6, $7, $8}' | sort       > w5_no_w2.tmp
+
+#file 3
+
+join w2 w5 | awk '{print $1, $3, $7, $4, $10, $14, $16, $11}' > tmp3
+
+echo id cgA age_devA weightA cgB age_devB days_partB weightB > phenotypes_2_5
+cat w2_no_w5.tmp w5_no_w2.tmp tmp3 >> phenotypes_2_5
+
+#Produce pedigree files 
+
+awk '{print $1}' phenotypes_2_5 | sort -u > ids.tmp
+
+#Run the nGenPedBuilder to build relevant pedigree 
+
+nGenPedBuilder.sh ids.tmp ../pedigree_source 4
+mv newPed.4 pedigree.tmp
+
+#Process the ped files to suit JWAS (replace . with 0 for missing, and change column sep to a comma. 
+
+echo "id,sire,dam"                                                                  > pedigree_2_5
+sed 's/\./0/g' pedigree.tmp | sed s/" "/,/g                                        >> pedigree_2_5
+rm pedigree.tmp
+
+
+chmod a+x+u  ../*
+JWAS
+cd <current>
+julia
+
+using JWAS,JWAS.Datasets,DataFrames,CSV,DelimitedFiles
+phenotypes = CSV.read("phenotypes_2_5",delim = ' ',header=true,missingstrings=["NA"])
+
+pedigree   = get_pedigree("pedigree_2_5",separator=",",header=true);
+phenotypes[1] = map(x -> string(x), phenotypes[1]);
+
+model_equation = "weightA = cgA + age_devA + id
+
+                  weightB = cgB + age_devB + days_partB + id"
+
+R = [167 107
+     107 463]
+
+model1 = build_model(model_equation,R);
+
+set_covariate(model1, "age_devA", "age_devB", "days_partB")
+
+G = [126 175
+     175 435]
+
+set_random(model1,"id",pedigree,G);
+
+using Random
+
+Random.seed!(1234)
+
+out1=runMCMC(model1,phenotypes,chain_length=90000,output_samples_frequency=10,outputEBV=true);
+
+#######
+#####
+###
+##
+#
+
+#Weight 3 with Weight 5 
+
+#Extract the column of cgs from each weight, and remove duplicates 
+
+join w3 w5 | awk '{print $3}' | sort -u > cg_ofinterest_w3
+join w3 w5 | awk '{print $10}' | sort -u > cg_ofinterest_w5
+
+#Create files with the following headers - three files 1: has wA, does not have wB, 2: has wB does not have wA, 3: has both wA and wB. 
+
+#cgA age_devA weightA cgB age_devB days_partB weightB
+
+#file 1
+
+join -v 1  w3 w5 | awk '{print $1, $3, $7, $4, "CGB", "0", "0","NA"}'                | sort -k2,2 > tmp1
+join -1 2 -2 1 tmp1 cg_ofinterest_w3 | awk '{print $2, $1, $3, $4, $5, $6, $7, $8}' | sort       > w3_no_w5.tmp
+
+#file 2
+
+join -v 2  w3 w5 | awk '{print $1,"CGA","0","NA",$3, $7,$9,$4}'                      | sort -k5,5 > tmp2
+join -1 5 -2 1 tmp2 cg_ofinterest_w5 | awk '{print $2, $3, $4, $5, $1, $6, $7, $8}' | sort       > w5_no_w3.tmp
+
+#file 3
+
+join w3 w5 | awk '{print $1, $3, $7, $4, $10, $14, $16, $11}' > tmp3
+
+echo id cgA age_devA weightA cgB age_devB days_partB weightB > phenotypes_3_5
+cat w3_no_w5.tmp w5_no_w3.tmp tmp3 >> phenotypes_3_5
+
+#Produce pedigree files 
+
+awk '{print $1}' phenotypes_3_5 | sort -u > ids.tmp
+
+#Run the nGenPedBuilder to build relevant pedigree 
+
+nGenPedBuilder.sh ids.tmp ../pedigree_source 4
+mv newPed.4 pedigree.tmp
+
+#Process the ped files to suit JWAS (replace . with 0 for missing, and change column sep to a comma. 
+
+echo "id,sire,dam"                                                                  > pedigree_3_5
+sed 's/\./0/g' pedigree.tmp | sed s/" "/,/g                                        >> pedigree_3_5
+rm pedigree.tmp
+
+
+chmod a+x+u  ../*
+JWAS
+cd <current>
+julia
+
+using JWAS,JWAS.Datasets,DataFrames,CSV,DelimitedFiles
+phenotypes = CSV.read("phenotypes_3_5",delim = ' ',header=true,missingstrings=["NA"])
+
+pedigree   = get_pedigree("pedigree_3_5",separator=",",header=true);
+phenotypes[1] = map(x -> string(x), phenotypes[1]);
+
+model_equation = "weightA = cgA + age_devA + id
+
+                  weightB = cgB + age_devB + days_partB + id"
+
+R = [271 215
+     215 484]
+
+model1 = build_model(model_equation,R);
+
+set_covariate(model1, "age_devA", "age_devB", "days_partB")
+
+G = [134 163
+     163 344]
+
+set_random(model1,"id",pedigree,G);
+
+using Random
+
+Random.seed!(1234)
+
+out1=runMCMC(model1,phenotypes,chain_length=90000,output_samples_frequency=10,outputEBV=true);
+
+######
+####
+##
+#
+
+#Weight 2 with Weight 3 
+
+#Extract the column of cgs from each weight, and remove duplicates 
+
+join w2 w3 | awk '{print $3}' | sort -u > cg_ofinterest_w2
+join w2 w3 | awk '{print $10}' | sort -u > cg_ofinterest_w3
+
+#Create files with the following headers - three files 1: has wA, does not have wB, 2: has wB does not have wA, 3: has both wA and wB. 
+
+#cgA age_devA weightA cgB age_devB days_partB weightB
+
+#file 1
+
+join -v 1  w2 w3 | awk '{print $1, $3, $7, $4, "CGB", "0","NA"}'                | sort -k2,2 > tmp1
+join -1 2 -2 1 tmp1 cg_ofinterest_w2 | awk '{print $2, $1, $3, $4, $5, $6, $7}' | sort       > w2_no_w3.tmp
+
+#file 2
+
+join -v 2  w2 w3 | awk '{print $1,"CGA","0","NA",$3, $7, $4}'                      | sort -k5,5 > tmp2
+join -1 5 -2 1 tmp2 cg_ofinterest_w3 | awk '{print $2, $3, $4, $5, $1, $6, $7}' | sort       > w3_no_w2.tmp
+
+#file 3
+
+join w2 w3 | awk '{print $1, $3, $7, $4, $10, $14, $11}' > tmp3
+
+echo id cgA age_devA weightA cgB age_devB weightB > phenotypes_2_3
+cat w2_no_w3.tmp w3_no_w2.tmp tmp3 >> phenotypes_2_3
+
+#Produce pedigree files 
+
+awk '{print $1}' phenotypes_2_3 | sort -u > ids.tmp
+
+#Run the nGenPedBuilder to build relevant pedigree 
+
+nGenPedBuilder.sh ids.tmp ../pedigree_source 4
+mv newPed.4 pedigree.tmp
+
+#Process the ped files to suit JWAS (replace . with 0 for missing, and change column sep to a comma. 
+
+echo "id,sire,dam"                                                                  > pedigree_2_3
+sed 's/\./0/g' pedigree.tmp | sed s/" "/,/g                                        >> pedigree_2_3
+rm pedigree.tmp
+
+
+chmod a+x+u  ../*
+JWAS
+cd <current>
+julia
+
+using JWAS,JWAS.Datasets,DataFrames,CSV,DelimitedFiles
+phenotypes = CSV.read("phenotypes_2_3",delim = ' ',header=true,missingstrings=["NA"])
+
+pedigree   = get_pedigree("pedigree_2_3",separator=",",header=true);
+phenotypes[1] = map(x -> string(x), phenotypes[1]);
+
+model_equation = "weightA = cgA + age_devA + id
+
+                  weightB = cgB + age_devB + id"
+
+R = [226 195
+     195 292]
+
+model1 = build_model(model_equation,R);
+
+set_covariate(model1, "age_devA", "age_devB")
+
+G = [61 76
+     76 106]
+
+set_random(model1,"id",pedigree,G);
+
+using Random
+
+Random.seed!(1234)
+
+out1=runMCMC(model1,phenotypes,chain_length=90000,output_samples_frequency=10,outputEBV=true);
+
+#######
+#####
+###
+#
+
+#Weight 1 with Weight 3 
+
+#Extract the column of cgs from each weight, and remove duplicates 
+     
+join w1 w3 | awk '{print $3}' | sort -u > cg_ofinterest_w1
+join w1 w3 | awk '{print $10}' | sort -u > cg_ofinterest_w3
+
+#Create files with the following headers - three files 1: has wA, does not have wB, 2: has wB does not have wA, 3: has both wA and wB. 
+
+#cgA age_devA weightA cgB age_devB days_partB weightB
+
+#file 1
+
+join -v 1  w1 w3 | awk '{print $1, $3, $7, $4, "CGB", "0","NA"}'                | sort -k2,2 > tmp1
+join -1 2 -2 1 tmp1 cg_ofinterest_w1 | awk '{print $2, $1, $3, $4, $5, $6, $7}' | sort       > w1_no_w3.tmp
+
+#file 2
+
+join -v 2  w1 w3 | awk '{print $1,"CGA","0","NA",$3, $7, $4}'                      | sort -k5,5 > tmp2
+join -1 5 -2 1 tmp2 cg_ofinterest_w3 | awk '{print $2, $3, $4, $5, $1, $6, $7}' | sort       > w3_no_w1.tmp
+
+#file 3
+
+join w1 w3 | awk '{print $1, $3, $7, $4, $10, $14, $11}' > tmp3
+
+echo id cgA age_devA weightA cgB age_devB weightB > phenotypes_1_3
+cat w1_no_w3.tmp w3_no_w1.tmp tmp3 >> phenotypes_1_3
+
+
+awk '{print $2, $0}' phenotypes_1_3 | sort -k1,1 > phenotypes_1_3.cgAsrt
+echo CGA > limited_cgs
+awk '$2!="CGA"{print $2}' phenotypes_1_3 | sort -u | sort -R | head -1000 | sort >> limited_cgs
+echo id cgA age_devA weightA cgB age_devB weightB > phenotypes_1_3_limited
+join limited_cgs phenotypes_1_3.cgAsrt | awk '{print $2, $3, $4, $5, $6, $7,$8}' >> phenotypes_1_3_limited
+
+awk '{print $5, $0}' phenotypes_1_3_limited | sort -k1,1 > phenotypes_1_3.cgBsrt
+echo CGB > limited_cgs_B
+awk '$5!="CGB"{print $5}' phenotypes_1_3_limited | sort -u | sort -R | head -1000 | sort >> limited_cgs_B
+echo id cgA age_devA weightA cgB age_devB weightB > phenotypes_1_3_limited_B
+join limited_cgs_B phenotypes_1_3.cgBsrt | awk '{print $2, $3, $4, $5, $6, $7, $8}' >> phenotypes_1_3_limited_B
+
+mv phenotypes_1_3_limited_B phenotypes_1_3_limited
+
+#Produce pedigree files 
+
+awk '{print $1}' phenotypes_1_3_limited | sort -u > ids.tmp
+
+#Run the nGenPedBuilder to build relevant pedigree 
+
+nGenPedBuilder.sh ids.tmp ../pedigree_source 4
+mv newPed.4 pedigree.tmp
+
+#Process the ped files to suit JWAS (replace . with 0 for missing, and change column sep to a comma. 
+
+echo "id,sire,dam"                                                                 > pedigree_1_3
+sed 's/\./0/g' pedigree.tmp | sed s/" "/,/g                                        >> pedigree_1_3
+rm pedigree.tmp
+
+
+chmod a+x+u  ../*
+JWAS
+cd <current>
+julia
+
+using JWAS,JWAS.Datasets,DataFrames,CSV,DelimitedFiles
+phenotypes = CSV.read("phenotypes_1_3_limited",delim = ' ',header=true,missingstrings=["NA"])
+
+pedigree   = get_pedigree("pedigree_1_3",separator=",",header=true);
+phenotypes[1] = map(x -> string(x), phenotypes[1]);
+
+model_equation = "weightA = cgA + age_devA + id
+
+                  weightB = cgB + age_devB + id"
+
+R = [140 121
+     121 282]
+
+model1 = build_model(model_equation,R);
+
+set_covariate(model1, "age_devA", "age_devB")
+
+G = [55 75
+     75 131]
+
+set_random(model1,"id",pedigree,G);
+
+using Random
+
+Random.seed!(1234)
+
+out1=runMCMC(model1,phenotypes,chain_length=90000,output_samples_frequency=10,outputEBV=true);
+
+#####
+###
+##
+#
+
+#Weight 1 with Weight 2 
+
+#Extract the column of cgs from each weight, and remove duplicates 
+
+join w1 w2 | awk '{print $3}' | sort -u > cg_ofinterest_w1
+join w1 w2 | awk '{print $10}' | sort -u > cg_ofinterest_w2
+
+#Create files with the following headers - three files 1: has wA, does not have wB, 2: has wB does not have wA, 3: has both wA and wB. 
+
+#cgA age_devA weightA cgB age_devB days_partB weightB
+
+#file 1
+
+join -v 1  w1 w2 | awk '{print $1, $3, $7, $4, "CGB", "0","NA"}'                | sort -k2,2 > tmp1
+join -1 2 -2 1 tmp1 cg_ofinterest_w1 | awk '{print $2, $1, $3, $4, $5, $6, $7}' | sort       > w1_no_w2.tmp
+
+#file 2
+
+join -v 2  w1 w2 | awk '{print $1,"CGA","0","NA",$3, $7, $4}'                      | sort -k5,5 > tmp2
+join -1 5 -2 1 tmp2 cg_ofinterest_w2 | awk '{print $2, $3, $4, $5, $1, $6, $7}' | sort       > w2_no_w1.tmp
+
+#file 3
+
+join w1 w2 | awk '{print $1, $3, $7, $4, $10, $14, $11}' > tmp3
+
+echo id cgA age_devA weightA cgB age_devB weightB > phenotypes_1_2
+cat w1_no_w2.tmp w2_no_w1.tmp tmp3 >> phenotypes_1_2
+
+awk '{print $2, $0}' phenotypes_1_2 | sort -k1,1 > phenotypes_1_2.cgAsrt
+echo CGA > limited_cgs
+awk '$2!="CGA"{print $2}' phenotypes_1_2 | sort -u | sort -R | head -1000 | sort >> limited_cgs
+echo id cgA age_devA weightA cgB age_devB weightB > phenotypes_1_2_limited
+join limited_cgs phenotypes_1_2.cgAsrt | awk '{print $2, $3, $4, $5, $6, $7,$8}' >> phenotypes_1_2_limited
+
+awk '{print $5, $0}' phenotypes_1_2_limited | sort -k1,1 > phenotypes_1_2.cgBsrt
+echo CGB > limited_cgs_B
+awk '$5!="CGB"{print $5}' phenotypes_1_2_limited | sort -u | sort -R | head -1000 | sort >> limited_cgs_B
+echo id cgA age_devA weightA cgB age_devB weightB > phenotypes_1_2_limited_B
+join limited_cgs_B phenotypes_1_2.cgBsrt | awk '{print $2, $3, $4, $5, $6, $7, $8}' >> phenotypes_1_2_limited_B
+
+mv phenotypes_1_2_limited_B phenotypes_1_2_limited
+
+#Produce pedigree files 
+
+awk '{print $1}' phenotypes_1_2_limited | sort -u > ids.tmp
+
+#Run the nGenPedBuilder to build relevant pedigree 
+
+nGenPedBuilder.sh ids.tmp ../pedigree_source 4
+mv newPed.4 pedigree.tmp
+
+#Process the ped files to suit JWAS (replace . with 0 for missing, and change column sep to a comma. 
+
+echo "id,sire,dam"                                                                  > pedigree_1_2
+sed 's/\./0/g' pedigree.tmp | sed s/" "/,/g                                        >> pedigree_1_2
+rm pedigree.tmp
+
+
+chmod a+x+u  ../*
+JWAS
+cd <current>
+julia
+
+using JWAS,JWAS.Datasets,DataFrames,CSV,DelimitedFiles
+phenotypes = CSV.read("phenotypes_1_2_limited",delim = ' ',header=true,missingstrings=["NA"])
+
+pedigree   = get_pedigree("pedigree_1_2",separator=",",header=true);
+phenotypes[1] = map(x -> string(x), phenotypes[1]);
+
+model_equation = "weightA = cgA + age_devA + id
+
+                  weightB = cgB + age_devB + id"
+
+R = [135 117
+     117 209]
+
+
+model1 = build_model(model_equation,R);
+
+set_covariate(model1, "age_devA", "age_devB")
+
+G = [62 71
+     71 91]
+
+set_random(model1,"id",pedigree,G);
+
+using Random
+
+Random.seed!(1234)
+
+out1=runMCMC(model1,phenotypes,chain_length=90000,output_samples_frequency=10,outputEBV=true);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
